@@ -48,7 +48,10 @@ The backend will start at: http://localhost:8000
 
 ### 1️⃣ Dependencies
 From the /frontend folder:
-```npm install```
+```
+   npm install
+   npm install axios
+```
 
 ### 2️⃣ Environment Variables
 
