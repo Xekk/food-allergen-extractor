@@ -94,12 +94,11 @@ async def upload_pdf(file: UploadFile = File(...), background_tasks: BackgroundT
     contents = await file.read()
 
     # Extract text (skip OCR for speed; optional to run in background)
-    raw_text = extract_text_from_pdf(contents, run_ocr_if_needed=False)
+    raw_text = extract_text_from_pdf(contents, run_ocr_if_needed=True)
     print(f"✅ Text extracted ({len(raw_text)} chars)", flush=True)
 
     # Optional background OCR for long-term use
     if background_tasks is not None and len(raw_text) < 100:
-        background_tasks.add_task(background_ocr_task, contents)
         print("🔄 OCR scheduled in background", flush=True)
 
     if not raw_text.strip():
