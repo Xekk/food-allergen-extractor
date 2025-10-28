@@ -14,8 +14,7 @@ def build_llm_prompt(text: str) -> str:
     }
 
     return f"""
-You are a data extraction assistant. The text below describes a food product
-(possibly in Hungarian or English). Note: You will be receiveing text extracted
+The text below describes a food product (possibly in Hungarian or English). Note: You will be receiveing text extracted
 from a PDF, which may include formatting issues.
 Some documents mark allergens with 'I'/'N' under columns
 which represent Igen/Nem (Yes/No) or will put ✔/X under these columns.
