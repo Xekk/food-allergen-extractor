@@ -20,9 +20,10 @@ export default function Home() {
     const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
     try {
-      const res = await axios.post("${API_URL}/upload", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      const res = await axios.post(`${API_URL}/upload`, formData, {
+  headers: { "Content-Type": "multipart/form-data" },
+});
+
       setData(res.data.extracted);
       setPreview(res.data.preview);
     } catch (err) {
