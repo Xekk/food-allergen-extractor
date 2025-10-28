@@ -4,8 +4,7 @@ import uvicorn
 import io
 import pdfplumber
 from pdf2image import convert_from_bytes
-import numpy as np
-import easyocr
+import pytesseract
 from prompt_templates import build_llm_prompt
 from openai import AsyncOpenAI
 import json
@@ -26,19 +25,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- OpenAI client ---
+# OpenAI async client
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
-# --- EasyOCR reader ---
-ocr_reader = easyocr.Reader(['en', 'hu'], gpu=False)  # set gpu=True if you have GPU
-
 # --- Utilities ---
 def extract_text_from_pdf(pdf_bytes: bytes) -> str:
-    """Extract text from PDF; fallback to OCR using EasyOCR if text is too short."""
+    """Extract text from PDF; fallback to OCR if text is too short."""
     text_chunks = []
-
-    # Try digital text extraction first
     try:
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
             for page in pdf.pages:
@@ -50,16 +44,11 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
 
     # OCR fallback
     if len(text) < 100:
-        print("No text detected, running EasyOCR...", flush=True)
-        images = convert_from_bytes(pdf_bytes, dpi=150)  # lower DPI → faster
-        ocr_text = []
-        for img in images:
-            img_array = np.array(img)
-            results = ocr_reader.readtext(img_array)
-            page_text = "\n".join([res[1] for res in results])
-            ocr_text.append(page_text)
+        print("No text detected, running OCR...", flush=True)
+        images = convert_from_bytes(pdf_bytes, dpi=200)
+        config = "-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789☑☒☐✔✖[]- --psm 6"
+        ocr_text = [pytesseract.image_to_string(img, lang="hun+eng", config=config) for img in images]
         text = "\n".join(ocr_text)
-
     return text
 
 async def call_openai(prompt: str) -> str:
@@ -75,7 +64,7 @@ async def call_openai(prompt: str) -> str:
                 temperature=0,
                 max_tokens=3000,
             ),
-            timeout=120,  # allow longer for big PDFs
+            timeout=240,  # allow longer for big PDFs
         )
         return response.choices[0].message.content.strip()
     except asyncio.TimeoutError:
