@@ -11,6 +11,7 @@ import json
 import re
 import os
 from dotenv import load_dotenv
+from openai import OpenAI
 
 load_dotenv()
 
@@ -26,10 +27,8 @@ app.add_middleware(
 
 # Initialize Ollama (make sure the model name matches what you pulled)
 # llm = Ollama(model="llama3.1")
-llm = Ollama(
-    model=os.getenv("OLLAMA_MODEL", "deepseek-v3.1:671b-cloud"),
-    base_url="https://cloud.api.ollama.com"  # cloud endpoint
-)
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 def extract_text_from_pdf(pdf_bytes: bytes) -> str:
     text_chunks = []
@@ -59,6 +58,28 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
         text = "\n".join(ocr_text)
     return text
 
+def call_openai(prompt: str) -> str:
+    """Send prompt to OpenAI and get JSON-only response."""
+    try:
+        response = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a JSON-only data extraction assistant. "
+                        "Return only valid JSON with no extra text."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0,
+            max_tokens=1500,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OpenAI error: {e}")
+
 @app.post("/upload")
 async def upload_pdf(file: UploadFile = File(...)):
     if file.content_type != "application/pdf":
@@ -71,7 +92,7 @@ async def upload_pdf(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail="No text found in PDF")
 
     prompt = build_llm_prompt(raw_text)
-    result = llm.invoke(prompt)
+    result = call_openai(prompt)
 
     try:
         json_match = re.search(r'\{.*\}', result, re.DOTALL)
