@@ -12,6 +12,9 @@ import re
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
+import asyncio
+from openai import AsyncOpenAI
+import time
 
 load_dotenv()
 
@@ -27,7 +30,7 @@ app.add_middleware(
 
 # Initialize Ollama (make sure the model name matches what you pulled)
 # llm = Ollama(model="llama3.1")
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 def extract_text_from_pdf(pdf_bytes: bytes) -> str:
@@ -58,25 +61,30 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
         text = "\n".join(ocr_text)
     return text
 
-def call_openai(prompt: str) -> str:
-    """Send prompt to OpenAI and get JSON-only response."""
+async def call_openai(prompt: str) -> str:
+    """Send prompt to OpenAI and get JSON-only response asynchronously."""
     try:
-        response = client.chat.completions.create(
-            model=OPENAI_MODEL,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a JSON-only data extraction assistant. "
-                        "Return only valid JSON with no extra text."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0,
-            max_tokens=3000,
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model=OPENAI_MODEL,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a JSON-only data extraction assistant. "
+                            "Return only valid JSON with no extra text."
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0,
+                max_tokens=3000,
+            ),
+            timeout=90,  # ⏱ prevent render timeout hangs
         )
         return response.choices[0].message.content.strip()
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="OpenAI request timed out")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OpenAI error: {e}")
 
@@ -88,11 +96,18 @@ async def upload_pdf(file: UploadFile = File(...)):
 
     contents = await file.read()
     raw_text = extract_text_from_pdf(contents)
+    print(f" Text extracting...")
     if not raw_text.strip():
         raise HTTPException(status_code=500, detail="No text found in PDF")
 
     prompt = build_llm_prompt(raw_text)
-    result = call_openai(prompt)
+    print("Sending to OpenAI...")
+    try:
+        result = await call_openai(prompt)
+    except Exception as e:
+        print("🔥 OpenAI call failed:", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
 
     try:
         json_match = re.search(r'\{.*\}', result, re.DOTALL)
