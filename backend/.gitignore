@@ -1,0 +1,11 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Environment files
+# .env
+
+# Other common Python ignores
+*.egg-info/
+dist/
+build/

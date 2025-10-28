@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pdfplumber
+pdf2image
+pytesseract
+PyMuPDF
+pillow
+langchain
+langchain-community
+python-dotenv
+python-multipart
