@@ -28,7 +28,7 @@ app.add_middleware(
 # llm = Ollama(model="llama3.1")
 llm = Ollama(
     model=os.getenv("OLLAMA_MODEL", "deepseek-v3.1:671b-cloud"),
-    base_url="https://api.ollama.com"  # cloud endpoint
+    base_url="https://cloud.api.ollama.com"  # cloud endpoint
 )
 
 def extract_text_from_pdf(pdf_bytes: bytes) -> str:
