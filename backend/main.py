@@ -1,8 +1,7 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
+from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import io
-import asyncio
 import pdfplumber
 from pdf2image import convert_from_bytes
 import pytesseract
@@ -12,7 +11,7 @@ import json
 import re
 import os
 from dotenv import load_dotenv
-import tempfile
+import asyncio
 
 load_dotenv()
 
@@ -31,8 +30,7 @@ client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 # --- Utilities ---
-
-def extract_text_from_pdf(pdf_bytes: bytes, run_ocr_if_needed: bool = True) -> str:
+def extract_text_from_pdf(pdf_bytes: bytes) -> str:
     """Extract text from PDF; fallback to OCR if text is too short."""
     text_chunks = []
     try:
@@ -44,8 +42,8 @@ def extract_text_from_pdf(pdf_bytes: bytes, run_ocr_if_needed: bool = True) -> s
 
     text = "\n".join(filter(None, text_chunks)).strip()
 
-    # Optional OCR fallback
-    if run_ocr_if_needed and len(text) < 100:
+    # OCR fallback
+    if len(text) < 100:
         print("No text detected, running OCR...", flush=True)
         images = convert_from_bytes(pdf_bytes, dpi=200)
         config = "-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789☑☒☐✔✖[]- --psm 6"
@@ -66,7 +64,7 @@ async def call_openai(prompt: str) -> str:
                 temperature=0,
                 max_tokens=3000,
             ),
-            timeout=90,  # prevent hanging
+            timeout=120,  # allow longer for big PDFs
         )
         return response.choices[0].message.content.strip()
     except asyncio.TimeoutError:
@@ -74,32 +72,18 @@ async def call_openai(prompt: str) -> str:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OpenAI error: {e}")
 
-# --- Background OCR (temporary file, auto-cleanup) ---
-def background_ocr_task(pdf_bytes: bytes):
-    """Run OCR in background and save to a temp file (deleted automatically)."""
-    with tempfile.NamedTemporaryFile(mode="w+", suffix=".txt", delete=True) as tmp:
-        text = extract_text_from_pdf(pdf_bytes, run_ocr_if_needed=True)
-        tmp.write(text)
-        tmp.flush()
-        print(f"OCR result processed in background (temp file: {tmp.name})", flush=True)
-        # file is deleted automatically after leaving this block
-
 # --- Routes ---
 @app.post("/upload")
-async def upload_pdf(file: UploadFile = File(...), background_tasks: BackgroundTasks = None):
+async def upload_pdf(file: UploadFile = File(...)):
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
 
     print(f"📄 Received file {file.filename}", flush=True)
     contents = await file.read()
 
-    # Extract text (skip OCR for speed; optional to run in background)
-    raw_text = extract_text_from_pdf(contents, run_ocr_if_needed=True)
+    # Extract text (OCR included)
+    raw_text = extract_text_from_pdf(contents)
     print(f"✅ Text extracted ({len(raw_text)} chars)", flush=True)
-
-    # Optional background OCR for long-term use
-    if background_tasks is not None and len(raw_text) < 100:
-        print("🔄 OCR scheduled in background", flush=True)
 
     if not raw_text.strip():
         raise HTTPException(status_code=500, detail="No text found in PDF")
